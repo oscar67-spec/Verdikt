@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verdikt - Instant website intelligence</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <style>
+    :root {
+      --bg: #111111;
+      --surface: #1a1a1a;
+      --border: #333333;
+      --text: #eeeeee;
+      --text-muted: #888888;
+      --accent: #ffffff;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      
+      --score-green: #0cce6b;
+      --score-orange: #ffa400;
+      --score-red: #ff4e42;
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    header { margin-bottom: 2rem; text-align: center; }
+    h1 { font-weight: 500; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
+    p { color: var(--text-muted); }
+
+    .tabs {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab {
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      font-size: 1.1rem;
+      padding: 0.75rem 1.5rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      font-weight: 500;
+    }
+    .tab:hover:not(.active) { color: var(--text); }
+    
+    .mode-content { display: none; }
+    .mode-content.active { display: block; animation: fadeIn 0.3s ease-out; }
+
+    .input-group { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem; }
+    input[type="text"], textarea {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 1rem;
+      border-radius: 6px;
+      font-size: 1rem;
+      outline: none;
+      font-family: inherit;
+    }
+    textarea { resize: vertical; }
+    input[type="text"]:focus, textarea:focus { border-color: var(--text-muted); }
+    
+    button {
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      align-self: flex-start;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+
+    .loading { display: none; text-align: left; color: var(--text-muted); margin: 2rem 0; font-size: 1.1rem;}
+    .spinner {
+      display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--text); border-radius: 50%;
+      animation: spin 1s linear infinite; margin-right: 0.5rem; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Single Mode Styles */
+    .scores-container { display: flex; gap: 2rem; margin-bottom: 2rem; flex-wrap: wrap; }
+    .score-item { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+    .score-label { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
+    .verdict-box { margin-bottom: 2rem; padding: 1rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 0.5rem; background: var(--surface); border: 1px solid var(--border); }
+    
+    /* Bulk Table */
+    table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; background: var(--surface); border-radius: 8px; overflow: hidden; }
+    th, td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: rgba(0,0,0,0.2); font-weight: 500; color: var(--text-muted); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.05em; }
+    tr:last-child td { border-bottom: none; }
+    tr.clickable:hover { background: rgba(255,255,255,0.02); cursor: pointer; }
+    
+    .score-circle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--border); font-weight: 600; font-size: 0.9rem;
+    }
+    .score-circle.large { width: 64px; height: 64px; font-size: 1.5rem; border-width: 4px; }
+    .score-circle.green { border-color: var(--score-green); }
+    .score-circle.orange { border-color: var(--score-orange); }
+    .score-circle.red { border-color: var(--score-red); }
+    .score-circle.gray { border-color: var(--border); color: var(--text-muted); }
+
+    .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.85rem; font-weight: 500; }
+    .badge.good { background-color: rgba(12, 206, 107, 0.15); color: var(--score-green); }
+    .badge.skip { background-color: rgba(255, 78, 66, 0.15); color: var(--score-red); }
+
+    .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-secondary:hover { background: rgba(255,255,255,0.05); }
+
+    /* Modal / Analysis Details */
+    .analysis-details { background: var(--surface); padding: 2rem; border-radius: 8px; border: 1px solid var(--border); }
+    .problem-list { list-style: none; margin: 1.5rem 0; }
+    .problem-list li { background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 6px; margin-bottom: 1rem; }
+    .problem-title { font-weight: 500; margin-bottom: 0.25rem; font-size: 1.05rem; }
+    .problem-cost { color: var(--text-muted); font-size: 0.95rem; }
+
+    .email-box {
+      background: rgba(0,0,0,0.2); border: 1px solid var(--border); padding: 1.5rem;
+      border-radius: 6px; margin-top: 1rem; font-size: 0.95rem; white-space: pre-wrap; font-family: inherit; color: var(--text);
+    }
+
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 50;
+      padding: 2rem; overflow-y: auto; backdrop-filter: blur(4px);
+    }
+    .modal-content {
+      max-width: 800px; margin: 0 auto; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 2.5rem; position: relative;
+    }
+    .modal-close { position: absolute; top: 1.5rem; right: 1.5rem; padding: 0.5rem 1rem; font-size: 0.85rem; }
+
+    /* Auth Styles - Apple Style */
+    .auth-wrapper {
+      position: fixed; inset: 0; background-color: #ffffff; color: #1d1d1f; display: flex; justify-content: center; align-items: center; z-index: 1000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .auth-card {
+      width: 100%; max-width: 380px; padding: 2rem; text-align: center;
+    }
+    .auth-title {
+      font-size: 2.5rem; font-weight: 700; margin-bottom: 0.25rem; color: #1d1d1f; letter-spacing: -0.02em;
+    }
+    .auth-tagline {
+      font-size: 1rem; color: #86868b; margin-bottom: 2.5rem;
+    }
+    .auth-input {
+      width: 100%; padding: 1rem; margin-bottom: 1rem; border: 1px solid #d2d2d7; border-radius: 12px; font-size: 1rem; outline: none; background: #ffffff; color: #1d1d1f; transition: border-color 0.2s; box-sizing: border-box;
+    }
+    .auth-input:focus { border-color: #0071e3; }
+    .auth-btn {
+      width: 100%; padding: 1rem; border-radius: 980px; border: none; font-size: 1rem; font-weight: 500; cursor: pointer; transition: background-color 0.2s; margin-bottom: 1rem;
+    }
+    .auth-btn-primary { background-color: #0071e3; color: #ffffff; }
+    .auth-btn-primary:hover { background-color: #0077ed; }
+    .auth-toggle { font-size: 0.9rem; color: #86868b; margin-top: 1rem; }
+    .auth-toggle a { color: #0071e3; text-decoration: none; }
+    .auth-error { color: #ff3b30; font-size: 0.85rem; margin-bottom: 1rem; text-align: left; display: none; }
+    .auth-message { color: #1d1d1f; font-size: 1rem; margin-bottom: 2rem; padding: 1rem; background-color: #f5f5f7; border-radius: 12px; display: none; text-align: center; line-height: 1.4; }
+
+    /* Profile UI */
+    .user-profile { position: absolute; top: 1.5rem; right: 2rem; z-index: 100; }
+    .profile-pic { width: 40px; height: 40px; border-radius: 50%; cursor: pointer; background-color: #333333; color: #ffffff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 1.1rem; user-select: none; }
+    .profile-pic img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+    .dropdown-menu { display: none; position: absolute; top: 50px; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 220px; padding: 1rem; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: left; }
+    .dropdown-menu.show { display: block; }
+    .dropdown-name { font-weight: 600; color: var(--text); margin-bottom: 0.25rem; font-size: 1rem; }
+    .dropdown-email { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem; word-break: break-all; }
+    .dropdown-btn { background: transparent; color: #ff4e42; border: 1px solid var(--border); width: 100%; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; border-radius: 6px; font-weight: 500; transition: background 0.2s; }
+    .dropdown-btn:hover { background: rgba(255, 78, 66, 0.1); }
+    .dropdown-btn.normal { color: var(--text); margin-bottom: 0.5rem; border-color: var(--border); }
+    .dropdown-btn.normal:hover { background: rgba(255, 255, 255, 0.1); }
+  </style>
+</head>
+<body>
+  <!-- Auth Layer -->
+  <div id="authContainer" class="auth-wrapper" style="display: none;">
+    <div class="auth-card">
+      <h1 class="auth-title">Verdikt</h1>
+      <p class="auth-tagline">Instant website intelligence</p>
+      
+      <div id="authErrorMsg" class="auth-error"></div>
+      <div id="inviteOnlyMsg" class="auth-message">Verdikt is currently invite-only.<br><br>To request access contact:<br><strong>chidiadioscar@gmail.com</strong></div>
+
+      <div id="authForms">
+        <div id="signInForm">
+          <input type="email" id="signInEmail" placeholder="Email" class="auth-input">
+          <input type="password" id="signInPassword" placeholder="Password" class="auth-input">
+          <button id="signInBtn" class="auth-btn auth-btn-primary">Sign In</button>
+          <p class="auth-toggle">Don't have an account? <a href="#" id="showSignUp">Sign Up</a></p>
+        </div>
+
+        <div id="signUpForm" style="display: none;">
+          <input type="email" id="signUpEmail" placeholder="Email" class="auth-input">
+          <input type="password" id="signUpPassword" placeholder="Password" class="auth-input">
+          <input type="password" id="signUpConfirm" placeholder="Confirm Password" class="auth-input">
+          <button id="signUpBtn" class="auth-btn auth-btn-primary">Create Account</button>
+          <p class="auth-toggle">Already have an account? <a href="#" id="showSignIn">Sign In</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile Area -->
+  <div id="userProfile" class="user-profile" style="display: none;">
+    <div id="profilePic" class="profile-pic">U</div>
+    <div id="profileDropdown" class="dropdown-menu">
+      <div id="dropdownName" class="dropdown-name">User Name</div>
+      <div id="dropdownEmail" class="dropdown-email">user@example.com</div>
+      <button id="apiSettingsBtn" class="dropdown-btn normal">API Settings</button>
+      <button id="signOutBtn" class="dropdown-btn">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="container" id="mainAppContainer" style="display: none;">
+    <header>
+      <h1>Verdikt</h1>
+      <p>Instant website intelligence</p>
+    </header>
+
+    <div class="tabs">
+      <button class="tab active" id="tabSingle">Single</button>
+      <button class="tab" id="tabBulk">Bulk</button>
+    </div>
+
+    <!-- Single Mode -->
+    <div id="modeSingle" class="mode-content active">
+      <div class="input-group">
+        <input type="text" id="singleUrlInput" placeholder="https://example.com" />
+        <button id="singleAnalyzeBtn">Analyze</button>
+      </div>
+
+      <div id="singleLoading" class="loading">
+        <div class="spinner"></div> Analyzing... this may take up to 30 seconds.
+      </div>
+
+      <div id="singleError" class="auth-error" style="display: none; margin-bottom: 2rem;"></div>
+
+      <div id="singleResults" style="display: none;">
+        <div class="verdict-box">
+          <span style="color:var(--text-muted);">Verdict:</span>
+          <span id="singleVerdict" class="badge"></span>
+        </div>
+        
+        <div class="scores-container">
+          <div class="score-item">
+            <div id="singlePerf" class="score-circle large">-</div>
+            <div class="score-label">Performance</div>
+          </div>
+          <div class="score-item">
+            <div id="singleSEO" class="score-circle large">-</div>
+            <div class="score-label">SEO</div>
+          </div>
+          <div class="score-item">
+            <div id="singleAccess" class="score-circle large">-</div>
+            <div class="score-label">Accessibility</div>
+          </div>
+          <div class="score-item">
+            <div id="singleBest" class="score-circle large">-</div>
+            <div class="score-label">Best Practices</div>
+          </div>
+        </div>
+
+        <div id="singleAnalysisContainer" class="analysis-details" style="display:none;"></div>
+      </div>
+    </div>
+
+    <!-- Bulk Mode -->
+    <div id="modeBulk" class="mode-content">
+      <div class="input-group">
+        <textarea id="bulkUrlInput" rows="6" placeholder="https://example.com&#10;https://another.com" required></textarea>
+        <button id="bulkAnalyzeBtn">Analyze All</button>
+      </div>
+
+      <div id="bulkLoading" class="loading">
+        <div class="spinner"></div> <span id="progressText">Analyzing 0 of 0...</span>
+      </div>
+
+      <div id="bulkResults" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2 style="font-weight: 500;">Analysis Results</h2>
+          <button id="exportCsvBtn" class="btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Export CSV</button>
+        </div>
+        
+        <div style="overflow-x: auto;">
+          <table id="resultsTable">
+            <thead>
+              <tr>
+                <th>URL</th>
+                <th>Performance</th>
+                <th>SEO</th>
+                <th>Accessibility</th>
+                <th>Best Practices</th>
+                <th>Verdict</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+          <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">Click on a row to view full analysis and cold email.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="detailsModal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="closeModalBtn" class="btn-secondary modal-close">Close</button>
+      <div id="modalInner"></div>
+    </div>
+  </div>
+
+  <div id="apiSettingsModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 500px;">
+      <button class="btn-secondary modal-close" onclick="document.getElementById('apiSettingsModal').style.display='none'">Close</button>
+      <h2 style="margin-bottom: 0.5rem; font-weight: 500;">API Settings</h2>
+      <p style="color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem;">Configure your own API keys to use Verdikt.</p>
+      
+      <div class="input-group">
+        <div style="margin-bottom: 1.5rem;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.9rem;">Google PageSpeed API Key</label>
+          <input type="text" id="pageSpeedApiKeyInput" placeholder="AIzaSy..." style="margin-bottom:0;">
+        </div>
+        
+        <div style="margin-bottom: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.9rem;">AI Provider</label>
+          <select id="aiProviderSelect" style="width: 100%; padding: 0.5rem; margin-bottom: 1rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text);">
+            <option value="gemini">Google Gemini</option>
+            <option value="openai">OpenAI Compatible (OpenAI, Groq, DeepSeek...)</option>
+          </select>
+        </div>
+
+        <div id="geminiSettings" style="margin-bottom: 1.5rem;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.9rem;">Gemini API Key</label>
+          <input type="text" id="geminiApiKeyInput" placeholder="AIzaSy..." style="margin-bottom:0;">
+        </div>
+
+        <div id="openaiSettings" style="display: none; margin-bottom: 1.5rem;">
+          <label style="display: block; margin-bottom: 0.25rem; font-weight: 500; font-size: 0.9rem;">API Endpoint</label>
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">Leave as default if using standard OpenAI. Change for Groq, DeepSeek, etc.</div>
+          <input type="text" id="openaiEndpointInput" placeholder="https://api.openai.com/v1/chat/completions" style="margin-bottom: 1rem;">
+          
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.9rem;">Model Name</label>
+          <input type="text" id="openaiModelInput" placeholder="gpt-4o-mini" style="margin-bottom: 1rem;">
+          
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.9rem;">API Key</label>
+          <input type="text" id="openaiApiKeyInput" placeholder="sk-..." style="margin-bottom:0;">
+        </div>
+        <button id="saveApiKeysBtn" style="width: 100%;">Save Keys</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Firebase Auth Logic ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyBTw2W8Yk1Ej-ZCEfR4F7dBQhrUVkLzdXE",
+      authDomain: "website-analyzer-498723.firebaseapp.com",
+      projectId: "website-analyzer-498723",
+      storageBucket: "website-analyzer-498723.firebasestorage.app",
+      messagingSenderId: "1070220402702",
+      appId: "1:1070220402702:web:52e805b9bb34da12379c5f",
+      measurementId: "G-07KYRLYMJ0"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    const whitelistedEmails = ['anyamelea6@gmail.com', 'chidiadioscar3@gmail.com', 'chidiadi.works@gmail.com'];
+
+    const authContainer = document.getElementById('authContainer');
+    const mainAppContainer = document.getElementById('mainAppContainer');
+    const userProfile = document.getElementById('userProfile');
+    const authForms = document.getElementById('authForms');
+    const inviteOnlyMsg = document.getElementById('inviteOnlyMsg');
+    const authErrorMsg = document.getElementById('authErrorMsg');
+
+    function showError(msg) {
+      if (msg) {
+        authErrorMsg.textContent = msg;
+        authErrorMsg.style.display = 'block';
+      } else {
+        authErrorMsg.style.display = 'none';
+      }
+    }
+
+    let isRejected = false;
+
+    function handleUserApproved(user, email) {
+      isRejected = false;
+      authContainer.style.display = 'none';
+      mainAppContainer.style.display = 'block';
+      userProfile.style.display = 'block';
+      
+      document.getElementById('dropdownName').textContent = user.displayName || 'User';
+      document.getElementById('dropdownEmail').textContent = email;
+      
+      const profilePic = document.getElementById('profilePic');
+      if (user.photoURL) {
+        profilePic.innerHTML = `<img src="${user.photoURL}" alt="Profile">`;
+      } else {
+        profilePic.textContent = email.charAt(0).toUpperCase();
+      }
+    }
+
+    function handleUserRejected() {
+      isRejected = true;
+      authForms.style.display = 'none';
+      inviteOnlyMsg.style.display = 'block';
+      authContainer.style.display = 'flex';
+      mainAppContainer.style.display = 'none';
+      userProfile.style.display = 'none';
+      auth.signOut();
+    }
+
+    function handleUserLoggedOut() {
+      if (isRejected) {
+        // Keep the rejected UI state
+        return;
+      }
+      authContainer.style.display = 'flex';
+      authForms.style.display = 'block';
+      inviteOnlyMsg.style.display = 'none';
+      mainAppContainer.style.display = 'none';
+      userProfile.style.display = 'none';
+    }
+
+    function setupAuthStateListener() {
+      auth.onAuthStateChanged(user => {
+        showError('');
+        if (user) {
+          const email = (user.email || '').toLowerCase();
+          if (whitelistedEmails.includes(email)) {
+            handleUserApproved(user, email);
+          } else {
+            handleUserRejected();
+          }
+        } else {
+          handleUserLoggedOut();
+        }
+      });
+    }
+
+    setupAuthStateListener();
+
+    // Toggle Sign In / Sign Up
+    document.getElementById('showSignUp').addEventListener('click', (e) => {
+      e.preventDefault();
+      showError('');
+      document.getElementById('signInForm').style.display = 'none';
+      document.getElementById('signUpForm').style.display = 'block';
+    });
+    document.getElementById('showSignIn').addEventListener('click', (e) => {
+      e.preventDefault();
+      showError('');
+      document.getElementById('signUpForm').style.display = 'none';
+      document.getElementById('signInForm').style.display = 'block';
+    });
+
+    // Handlers
+    document.getElementById('signInBtn').addEventListener('click', () => {
+      showError('');
+      const em = document.getElementById('signInEmail').value;
+      const pw = document.getElementById('signInPassword').value;
+      if(!em || !pw) return showError('Please fill in both fields.');
+      auth.signInWithEmailAndPassword(em, pw).catch(err => showError(err.message));
+    });
+
+    document.getElementById('signUpBtn').addEventListener('click', () => {
+      showError('');
+      const em = document.getElementById('signUpEmail').value;
+      const pw = document.getElementById('signUpPassword').value;
+      const confirm = document.getElementById('signUpConfirm').value;
+      if(!em || !pw) return showError('Please fill in all fields.');
+      if(pw !== confirm) return showError('Passwords do not match.');
+      auth.createUserWithEmailAndPassword(em, pw).catch(err => showError(err.message));
+    });
+
+    // Profile Dropdown
+    document.getElementById('profilePic').addEventListener('click', () => {
+      document.getElementById('profileDropdown').classList.toggle('show');
+    });
+    window.addEventListener('click', (e) => {
+      if (!document.getElementById('userProfile').contains(e.target)) {
+        document.getElementById('profileDropdown').classList.remove('show');
+      }
+    });
+    document.getElementById('signOutBtn').addEventListener('click', () => {
+      isRejected = false;
+      auth.signOut();
+      document.getElementById('profileDropdown').classList.remove('show');
+    });
+
+    // --- API Settings Logic ---
+    const aiProviderSelect = document.getElementById('aiProviderSelect');
+    const geminiSettings = document.getElementById('geminiSettings');
+    const openaiSettings = document.getElementById('openaiSettings');
+
+    aiProviderSelect.addEventListener('change', (e) => {
+      if (e.target.value === 'gemini') {
+        geminiSettings.style.display = 'block';
+        openaiSettings.style.display = 'none';
+      } else {
+        geminiSettings.style.display = 'none';
+        openaiSettings.style.display = 'block';
+      }
+    });
+
+    document.getElementById('apiSettingsBtn').addEventListener('click', () => {
+      document.getElementById('profileDropdown').classList.remove('show');
+      document.getElementById('pageSpeedApiKeyInput').value = localStorage.getItem('pagespeed_api_key') || '';
+      
+      const provider = localStorage.getItem('ai_provider') || 'gemini';
+      aiProviderSelect.value = provider;
+      aiProviderSelect.dispatchEvent(new Event('change'));
+
+      document.getElementById('geminiApiKeyInput').value = localStorage.getItem('gemini_api_key') || '';
+      
+      document.getElementById('openaiEndpointInput').value = localStorage.getItem('openai_endpoint') || 'https://api.openai.com/v1/chat/completions';
+      document.getElementById('openaiModelInput').value = localStorage.getItem('openai_model') || 'gpt-4o-mini';
+      document.getElementById('openaiApiKeyInput').value = localStorage.getItem('openai_api_key') || '';
+
+      document.getElementById('apiSettingsModal').style.display = 'block';
+    });
+
+    document.getElementById('saveApiKeysBtn').addEventListener('click', () => {
+      const psKey = document.getElementById('pageSpeedApiKeyInput').value.trim();
+      if (psKey) localStorage.setItem('pagespeed_api_key', psKey);
+      else localStorage.removeItem('pagespeed_api_key');
+      
+      const provider = aiProviderSelect.value;
+      localStorage.setItem('ai_provider', provider);
+
+      const gemKey = document.getElementById('geminiApiKeyInput').value.trim();
+      if (gemKey) localStorage.setItem('gemini_api_key', gemKey);
+      else localStorage.removeItem('gemini_api_key');
+      
+      const endpoint = document.getElementById('openaiEndpointInput').value.trim();
+      if (endpoint) localStorage.setItem('openai_endpoint', endpoint);
+      
+      const model = document.getElementById('openaiModelInput').value.trim();
+      if (model) localStorage.setItem('openai_model', model);
+      
+      const openaiKey = document.getElementById('openaiApiKeyInput').value.trim();
+      if (openaiKey) localStorage.setItem('openai_api_key', openaiKey);
+      else localStorage.removeItem('openai_api_key');
+
+      document.getElementById('apiSettingsModal').style.display = 'none';
+    });
+
+    function getPageSpeedKey() {
+      const key = localStorage.getItem('pagespeed_api_key');
+      if (!key) throw new Error("Please configure your Google PageSpeed API Key in API Settings.");
+      return key;
+    }
+
+    function getGeminiKey() {
+      const key = localStorage.getItem('gemini_api_key');
+      if (!key) throw new Error("Please configure your Gemini API Key in API Settings.");
+      return key;
+    }
+
+    // --- Core Analysis Logic (Client-Side) ---
+
+    async function analyzeUrl(url) {
+      const psKey = getPageSpeedKey();
+
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+      }
+      
+      // Fetch Mobile and Desktop data in parallel to speed up the process
+      const mobilePromise = fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=mobile&category=performance&category=seo&category=accessibility&category=best-practices&key=${psKey}`);
+      const desktopPromise = fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=desktop&category=performance&category=seo&category=accessibility&category=best-practices&key=${psKey}`);
+
+      const [mobileRes, desktopRes] = await Promise.all([mobilePromise, desktopPromise]);
+
+      if (!mobileRes.ok) {
+        const errDetails = await mobileRes.text();
+        throw new Error("Failed to fetch mobile PageSpeed data. " + errDetails);
+      }
+      const mobileData = await mobileRes.json();
+      
+      if (!desktopRes.ok) {
+        const errDetails = await desktopRes.text();
+        throw new Error("Failed to fetch desktop PageSpeed data. " + errDetails);
+      }
+      const desktopData = await desktopRes.json();
+
+      const getCatScore = (data, pName) => {
+          try {
+              return data.lighthouseResult.categories[pName].score * 100;
+          } catch (e) {
+              return 0;
+          }
+      };
+
+      const performanceScore = getCatScore(mobileData, 'performance');
+      const seoScore = getCatScore(mobileData, 'seo');
+      const accessibilityScore = getCatScore(mobileData, 'accessibility');
+      const bestPracticesScore = getCatScore(desktopData, 'best-practices');
+
+      const verdict = performanceScore < 90 ? "Good Prospect" : "Skip - Good Performance";
+      
+      let analysisInfo = {
+          verdict,
+          explanation: "",
+          topProblems: [],
+          emails: []
+      };
+
+      if (verdict === "Good Prospect") {
+          const getMetrics = (data) => {
+              try {
+                  const res = data.lighthouseResult;
+                  const audits = res.audits;
+                  return {
+                      performanceScore: res.categories.performance.score * 100,
+                      fcp: audits['first-contentful-paint']?.displayValue,
+                      lcp: audits['largest-contentful-paint']?.displayValue,
+                      tbt: audits['total-blocking-time']?.displayValue,
+                      cls: audits['cumulative-layout-shift']?.displayValue,
+                      speedIndex: audits['speed-index']?.displayValue,
+                      timeToInteractive: audits['interactive']?.displayValue,
+                      issues: Object.values(audits)
+                          .filter(a => a.score !== null && a.score < 0.9 && a.details && a.details.type === 'opportunity')
+                          .map(a => a.title)
+                  };
+              } catch (e) {
+                  return {};
+              }
+          };
+
+          const mobileMetrics = getMetrics(mobileData);
+          const desktopMetrics = getMetrics(desktopData);
+
+          const prompt = `I have run PageSpeed Insights for the URL: ${url}.
+
+Here is the raw data:
+Mobile Metrics: ${JSON.stringify(mobileMetrics)}
+Desktop Metrics: ${JSON.stringify(desktopMetrics)}
+
+Perform the following tasks:
+1. Explain what the overall scores mean in simple business language (Performance, SEO, Accessibility, Best Practices).
+2. List the top 3 worst problems on the site based on the provided issues.
+3. Explain what each of those 3 problems is costing the business in plain terms.
+4. Generate 3 variations of a ready-to-send cold email to the website owner, each with a slightly different opening line. Follow the strict rules below.
+
+EMAIL GENERATION RULES:
+- Maximum 5 lines total per email, never more
+- Never mention our company or service name
+- Never use the word "I noticed"
+- Never list multiple problems - pick the ONE worst issue only
+- Always open with a specific number from their audit
+- The offer is always "free redesign draft" nothing else
+- One question at the end, never a statement
+- Sound like a human wrote it in 2 minutes, not a marketing team
+- Never use words: "leverage", "optimize", "enhance", "solutions", "reach out", "touch base", "synergy"
+
+SUBJECT LINE RULES:
+- Under 6 words
+- Never a question
+- Make it sound internal, like an email from a colleague
+- Examples of good subjects:
+  "Quick thing about your site"
+  "Your mobile score"
+  "[Business name] website"
+
+EMAIL STRUCTURE (follow exactly):
+Subject: [subject]
+
+[Line 1: One specific bad number from their audit + what it means in plain business terms]
+
+[Line 2: One sentence on what this is costing them in plain language (lost customers, not technical jargon)]
+
+Would it be okay if I put together a free redesign draft so you can see what's possible?
+
+[First name only signature]
+
+Return the result as a strictly valid JSON object conforming to this schema without any markdown formatting or json codeblocks.
+Schema:
+{
+    "explanation": "String explaining the scores in business terms",
+    "topProblems": [{"problem": "String", "cost": "String explaining business cost"}],
+    "emails": ["String", "String", "String"]
+}`;
+
+          const aiProvider = localStorage.getItem('ai_provider') || 'gemini';
+          
+          if (aiProvider === 'gemini') {
+            const gemKey = getGeminiKey();
+            const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${gemKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                       responseMimeType: "application/json"
+                    }
+                })
+            });
+
+            if (!geminiRes.ok) {
+                const errTxt = await geminiRes.text();
+                if (geminiRes.status === 429) {
+                    throw new Error("Gemini API Quota Exceeded. Please check your billing or plan.");
+                }
+                throw new Error("Failed to process data with Gemini API. " + errTxt);
+            }
+            const geminiData = await geminiRes.json();
+            
+            try {
+                const text = geminiData.candidates[0].content.parts[0].text;
+                const parsed = JSON.parse(text);
+                analysisInfo = { verdict, ...parsed };
+            } catch (e) {
+                console.error("Parse Error mapping to object", e);
+                throw new Error("Failed to parse Gemini response.");
+            }
+          } else {
+            // OpenAI Compatible
+            const openaiEndpoint = localStorage.getItem('openai_endpoint') || 'https://api.openai.com/v1/chat/completions';
+            const openaiModel = localStorage.getItem('openai_model') || 'gpt-4o-mini';
+            const openaiKey = localStorage.getItem('openai_api_key');
+            
+            if (!openaiKey) throw new Error("Please configure your AI API Key in API Settings.");
+
+            let aiRes;
+            try {
+                let finalEndpoint = openaiEndpoint;
+                if (!finalEndpoint.endsWith('/chat/completions') && !finalEndpoint.endsWith('/v1/messages')) {
+                   console.warn("Endpoint might be missing /chat/completions suffix: ", finalEndpoint);
+                }
+                aiRes = await fetch(finalEndpoint, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${openaiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: openaiModel,
+                        messages: [{ role: "user", content: prompt }]
+                    })
+                });
+            } catch (fetchErr) {
+                if (fetchErr.message === "Failed to fetch") {
+                    throw new Error("Network error (Failed to fetch). This is often due to CORS blocking client-side requests. Try a provider that allows browser calls (like OpenRouter or OpenAI), or check your endpoint URL.");
+                }
+                throw fetchErr;
+            }
+
+            if (!aiRes.ok) {
+                const errTxt = await aiRes.text();
+                throw new Error("Failed to process data with AI API. " + errTxt);
+            }
+            const aiData = await aiRes.json();
+            
+            try {
+                let text = aiData.choices[0].message.content;
+                // Strip markdown backticks if the model returned them
+                text = text.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/i, '').trim();
+                const parsed = JSON.parse(text);
+                analysisInfo = { verdict, ...parsed };
+            } catch (e) {
+                console.error("Parse Error resolving JSON", e);
+                throw new Error("Failed to decode AI response. The model may not have returned valid JSON: " + (aiData.choices?.[0]?.message?.content || JSON.stringify(aiData)));
+            }
+          }
+      }
+
+      return {
+          metrics: {
+              performanceScore,
+              seoScore,
+              accessibilityScore,
+              bestPracticesScore
+          },
+          analysis: analysisInfo
+      };
+    }
+
+    // Tab switching logic
+    const tabSingle = document.getElementById('tabSingle');
+    const tabBulk = document.getElementById('tabBulk');
+    const modeSingle = document.getElementById('modeSingle');
+    const modeBulk = document.getElementById('modeBulk');
+
+    tabSingle.addEventListener('click', () => {
+      tabSingle.classList.add('active');
+      tabBulk.classList.remove('active');
+      modeSingle.classList.add('active');
+      modeBulk.classList.remove('active');
+    });
+
+    tabBulk.addEventListener('click', () => {
+      tabBulk.classList.add('active');
+      tabSingle.classList.remove('active');
+      modeBulk.classList.add('active');
+      modeSingle.classList.remove('active');
+    });
+
+    function getScoreClass(score) {
+      if (!score && score !== 0) return 'gray';
+      if (score >= 90) return 'green';
+      if (score >= 50) return 'orange';
+      return 'red';
+    }
+
+    function renderAnalysisHtml(a) {
+      let problemsHtml = '';
+      (a.topProblems || []).forEach(p => {
+        problemsHtml += `<li>
+          <div class="problem-title">${p.problem}</div>
+          <div class="problem-cost">${p.cost}</div>
+        </li>`;
+      });
+      
+      let emailsHtml = '';
+      if (a.emails && a.emails.length > 0) {
+        a.emails.forEach((email, i) => {
+          const safeEmail = email.replace(/`/g, '\\`');
+          emailsHtml += `
+            <div style="margin-bottom: 2rem;">
+              <h4 style="font-weight: 500; color: var(--text-muted); margin-bottom: 0.5rem;">Option ${i + 1}</h4>
+              <div class="email-box" style="margin-top: 0;">
+                <div style="margin-bottom: 1.5rem;">${email}</div>
+                <button onclick="navigator.clipboard.writeText(\`${safeEmail}\`); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy', 2000);" style="padding: 0.5rem 1rem; font-size: 0.85rem;" class="btn-secondary">Copy</button>
+              </div>
+            </div>
+          `;
+        });
+      } else {
+        const safeEmail = (a.coldEmail || '').replace(/`/g, '\\`');
+        emailsHtml = `
+          <div class="email-box">
+            <div style="margin-bottom: 1.5rem;">${a.coldEmail || ''}</div>
+            <button onclick="navigator.clipboard.writeText(\`${safeEmail}\`); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy Draft', 2000);" style="padding: 0.5rem 1rem; font-size: 0.85rem;" class="btn-secondary">Copy Draft</button>
+          </div>
+        `;
+      }
+      
+      return `
+        <h3 style="font-weight: 500; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem;">Business Context</h3>
+        <p style="margin-bottom: 2rem;">${a.explanation || ''}</p>
+        
+        <h3 style="font-weight: 500; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem;">Key Constraints</h3>
+        <ul class="problem-list">${problemsHtml}</ul>
+
+        <h3 style="font-weight: 500; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-top: 2rem; margin-bottom: 1.5rem;">Cold Email Drafts</h3>
+        ${emailsHtml}
+      `;
+    }
+
+    // --- Single Mode Logic ---
+    const singleUrlInput = document.getElementById('singleUrlInput');
+    const singleAnalyzeBtn = document.getElementById('singleAnalyzeBtn');
+    const singleLoading = document.getElementById('singleLoading');
+    const singleResults = document.getElementById('singleResults');
+
+    singleAnalyzeBtn.addEventListener('click', async () => {
+      const url = singleUrlInput.value.trim();
+      if (!url) return;
+
+      singleAnalyzeBtn.disabled = true;
+      singleLoading.style.display = 'block';
+      singleResults.style.display = 'none';
+      document.getElementById('singleError').style.display = 'none';
+
+      try {
+        const data = await analyzeUrl(url);
+
+        const m = data.metrics;
+        const pScore = Math.round(m.performanceScore);
+        const sScore = Math.round(m.seoScore);
+        const aScore = Math.round(m.accessibilityScore);
+        const bScore = Math.round(m.bestPracticesScore);
+
+        document.getElementById('singlePerf').className = `score-circle large ${getScoreClass(pScore)}`;
+        document.getElementById('singlePerf').textContent = pScore;
+        document.getElementById('singleSEO').className = `score-circle large ${getScoreClass(sScore)}`;
+        document.getElementById('singleSEO').textContent = sScore;
+        document.getElementById('singleAccess').className = `score-circle large ${getScoreClass(aScore)}`;
+        document.getElementById('singleAccess').textContent = aScore;
+        document.getElementById('singleBest').className = `score-circle large ${getScoreClass(bScore)}`;
+        document.getElementById('singleBest').textContent = bScore;
+
+        const verdict = data.analysis.verdict;
+        document.getElementById('singleVerdict').className = `badge ${verdict === 'Good Prospect' ? 'good' : 'skip'}`;
+        document.getElementById('singleVerdict').textContent = verdict;
+
+        const analysisContainer = document.getElementById('singleAnalysisContainer');
+        if (verdict === 'Good Prospect') {
+          analysisContainer.innerHTML = renderAnalysisHtml(data.analysis);
+          analysisContainer.style.display = 'block';
+        } else {
+          analysisContainer.style.display = 'none';
+        }
+
+        singleResults.style.display = 'block';
+      } catch (err) {
+        const errorDiv = document.getElementById('singleError');
+        errorDiv.textContent = 'Error: ' + err.message;
+        errorDiv.style.display = 'block';
+      } finally {
+        singleLoading.style.display = 'none';
+        singleAnalyzeBtn.disabled = false;
+      }
+    });
+
+    // --- Bulk Mode Logic ---
+    const bulkUrlInput = document.getElementById('bulkUrlInput');
+    const bulkAnalyzeBtn = document.getElementById('bulkAnalyzeBtn');
+    const bulkLoading = document.getElementById('bulkLoading');
+    const bulkResults = document.getElementById('bulkResults');
+    const resultsBody = document.getElementById('resultsBody');
+    const progressText = document.getElementById('progressText');
+    let allResults = [];
+
+    window.openModal = function(idx) {
+      const data = allResults[idx];
+      if (!data || data.error || data.analysis.verdict !== 'Good Prospect') return;
+      
+      const modal = document.getElementById('detailsModal');
+      const inner = document.getElementById('modalInner');
+      
+      inner.innerHTML = `
+        <h2 style="margin-bottom: 2rem; font-weight: 500; font-family: monospace; font-size: 1.25rem;">${data.url}</h2>
+        ${renderAnalysisHtml(data.analysis)}
+      `;
+      modal.style.display = 'block';
+    }
+    
+    document.getElementById('closeModalBtn').addEventListener('click', () => {
+      document.getElementById('detailsModal').style.display = 'none';
+    });
+
+    bulkAnalyzeBtn.addEventListener('click', async () => {
+      const text = bulkUrlInput.value.trim();
+      if (!text) return;
+      const urls = text.split('\n').map(u => u.trim()).filter(u => u);
+      if (urls.length === 0) return;
+
+      bulkAnalyzeBtn.disabled = true;
+      bulkLoading.style.display = 'block';
+      bulkResults.style.display = 'none';
+      resultsBody.innerHTML = '';
+      allResults = [];
+
+      const batchSize = 10;
+      const totalBatches = Math.ceil(urls.length / batchSize);
+      let totalAnalyzed = 0;
+
+      for (let b = 0; b < totalBatches; b++) {
+        const batchUrls = urls.slice(b * batchSize, (b + 1) * batchSize);
+        progressText.innerHTML = `Batch ${b + 1} of ${totalBatches} running... - ${totalAnalyzed}/${urls.length} analyzed`;
+        
+        const promises = batchUrls.map(async (url) => {
+          try {
+            const data = await analyzeUrl(url);
+            data.url = url;
+            return data;
+          } catch(err) {
+            return { url, error: err.message };
+          }
+        });
+
+        const batchResults = await Promise.all(promises);
+        
+        batchResults.forEach(row => {
+          const idx = allResults.length;
+          allResults.push(row);
+          
+          const tr = document.createElement('tr');
+          if (row.error) {
+            tr.innerHTML = `
+              <td>${row.url}</td>
+              <td colspan="5" style="color: var(--score-red);">Error: ${row.error}</td>
+            `;
+          } else {
+            const pScore = Math.round(row.metrics.performanceScore);
+            const sScore = Math.round(row.metrics.seoScore);
+            const aScore = Math.round(row.metrics.accessibilityScore);
+            const bScore = Math.round(row.metrics.bestPracticesScore);
+            const verdict = row.analysis.verdict;
+            
+            if (verdict === 'Good Prospect') {
+              tr.classList.add('clickable');
+              tr.onclick = () => window.openModal(idx);
+            }
+
+            tr.innerHTML = `
+              <td style="font-family: monospace; font-size: 0.95rem;">${row.url}</td>
+              <td><div class="score-circle ${getScoreClass(pScore)}">${pScore}</div></td>
+              <td><div class="score-circle ${getScoreClass(sScore)}">${sScore}</div></td>
+              <td><div class="score-circle ${getScoreClass(aScore)}">${aScore}</div></td>
+              <td><div class="score-circle ${getScoreClass(bScore)}">${bScore}</div></td>
+              <td><span class="badge ${verdict === 'Good Prospect' ? 'good' : 'skip'}">${verdict}</span></td>
+            `;
+          }
+          resultsBody.appendChild(tr);
+        });
+
+        totalAnalyzed += batchResults.length;
+        progressText.innerHTML = `Batch ${b + 1} of ${totalBatches} complete - ${totalAnalyzed}/${urls.length} analyzed`;
+        
+        // Show table as soon as first batch is complete
+        bulkResults.style.display = 'block';
+      }
+
+      bulkLoading.style.display = 'none';
+      bulkAnalyzeBtn.disabled = false;
+    });
+
+    // --- Export CSV Logic ---
+    document.getElementById('exportCsvBtn').addEventListener('click', () => {
+      let csv = 'URL,Performance,SEO,Accessibility,Best Practices,Verdict,Email Option 1,Email Option 2,Email Option 3\n';
+      allResults.forEach(r => {
+        if (r.error) {
+          csv += `"${r.url}","Error","","","","","","",""\n`;
+          return;
+        }
+        const m = r.metrics;
+        const a = r.analysis;
+        
+        let emails = ["", "", ""];
+        if (a.emails && a.emails.length > 0) {
+          emails[0] = a.emails[0] ? a.emails[0].replace(/"/g, '""') : '';
+          emails[1] = a.emails[1] ? a.emails[1].replace(/"/g, '""') : '';
+          emails[2] = a.emails[2] ? a.emails[2].replace(/"/g, '""') : '';
+        } else if (a.coldEmail) {
+          emails[0] = a.coldEmail.replace(/"/g, '""');
+        }
+        
+        csv += `"${r.url}","${Math.round(m.performanceScore)}","${Math.round(m.seoScore)}","${Math.round(m.accessibilityScore)}","${Math.round(m.bestPracticesScore)}","${a.verdict}","${emails[0]}","${emails[1]}","${emails[2]}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'verdikt_analysis.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>
