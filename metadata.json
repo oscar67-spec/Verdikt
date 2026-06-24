@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "Verdikt",
+  "description": "Instant website intelligence",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
