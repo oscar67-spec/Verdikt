@@ -195,7 +195,6 @@
       <p class="auth-tagline">Instant website intelligence</p>
       
       <div id="authErrorMsg" class="auth-error"></div>
-      <div id="inviteOnlyMsg" class="auth-message">Verdikt is currently invite-only.<br><br>To request access contact:<br><strong>chidiadioscar@gmail.com</strong></div>
 
       <div id="authForms">
         <div id="signInForm">
@@ -379,27 +378,12 @@
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
 
-    const whitelistedEmails = [
-      'anyamelea6@gmail.com', 
-      'chidiadioscar3@gmail.com', 
-      'chidiadi.works@gmail.com',
-      'taiwosheriffdeen473@gmail.com',
-      'chibuezeobiako1@gmail.com',
-      'donvickydigitalz@gmail.com',
-      'adejareadebayo4@gmail.com',
-      'lwinusoluponelo@gmail.com',
-      'sunkanmiagbaje17@gmail.com',
-      'hassanabdulfatai06@gmail.com',
-      'thesaranero@gmail.com',
-      'mukhtarmuhibudeen@gmail.com',
-      'blackmonarch44@gmail.com'
-    ];
+    // Removed whitelist - site is now accessible to anyone
 
     const authContainer = document.getElementById('authContainer');
     const mainAppContainer = document.getElementById('mainAppContainer');
     const userProfile = document.getElementById('userProfile');
     const authForms = document.getElementById('authForms');
-    const inviteOnlyMsg = document.getElementById('inviteOnlyMsg');
     const authErrorMsg = document.getElementById('authErrorMsg');
 
     function showError(msg) {
@@ -411,10 +395,7 @@
       }
     }
 
-    let isRejected = false;
-
     function handleUserApproved(user, email) {
-      isRejected = false;
       authContainer.style.display = 'none';
       mainAppContainer.style.display = 'block';
       userProfile.style.display = 'block';
@@ -430,24 +411,9 @@
       }
     }
 
-    function handleUserRejected() {
-      isRejected = true;
-      authForms.style.display = 'none';
-      inviteOnlyMsg.style.display = 'block';
-      authContainer.style.display = 'flex';
-      mainAppContainer.style.display = 'none';
-      userProfile.style.display = 'none';
-      auth.signOut();
-    }
-
     function handleUserLoggedOut() {
-      if (isRejected) {
-        // Keep the rejected UI state
-        return;
-      }
       authContainer.style.display = 'flex';
       authForms.style.display = 'block';
-      inviteOnlyMsg.style.display = 'none';
       mainAppContainer.style.display = 'none';
       userProfile.style.display = 'none';
     }
@@ -457,11 +423,8 @@
         showError('');
         if (user) {
           const email = (user.email || '').toLowerCase();
-          if (whitelistedEmails.includes(email)) {
-            handleUserApproved(user, email);
-          } else {
-            handleUserRejected();
-          }
+          // Allow all authenticated users - no whitelist check
+          handleUserApproved(user, email);
         } else {
           handleUserLoggedOut();
         }

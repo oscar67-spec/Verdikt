@@ -27,7 +27,6 @@ All sensitive information should be stored in environment variables, not in sour
 | `VITE_FIREBASE_API_KEY` | Firebase API Key | 🔴 HIGH - Keep secret |
 | `VITE_FIREBASE_AUTH_DOMAIN` | Firebase Auth Domain | 🟡 MEDIUM - Can be public |
 | `VITE_FIREBASE_PROJECT_ID` | Firebase Project ID | 🟡 MEDIUM - Can be public |
-| `VITE_WHITELISTED_EMAILS` | Comma-separated allowed emails | 🟡 MEDIUM - Consider private |
 | `VITE_SUPPORT_EMAIL` | Support contact email | 🟢 LOW - Public info |
 
 ## API Keys Management
