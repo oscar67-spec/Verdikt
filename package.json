@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "start": "vite preview --host 0.0.0.0 --port 3000",
+    "dev": "node api.js && vite",
+    "build": "node api.js && vite build",
+    "start": "node api.js && vite preview --host 0.0.0.0 --port 3000",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },
